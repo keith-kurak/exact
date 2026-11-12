@@ -165,6 +165,13 @@ internal class Scrolling(private val view: ExactView) {
         }
     }
 
+    /** An accepted hosted view keeps a multipointer gesture; an established scroll keeps its drag. */
+    fun yieldToHosted() {
+        if (mode != WATCHING) return
+        mode = IDLE
+        tracker?.recycle(); tracker = null
+    }
+
     /**
      * exact2's answer for touch [serial] ([Native.under]): the claims, a count, and eleven words a scroller. The
      * statement that tells each scroller's place is published before this arrives ([Owner.under]).
@@ -212,7 +219,7 @@ internal class Scrolling(private val view: ExactView) {
         active = chain.filter { if (sideways) it.x else it.y }.map { it.s }
         mode = DRAGGING
         lastX = x; lastY = y
-        view.forward(3, x, y, tool, 0L)
+        view.cancelContact(x, y, tool)
     }
 
     /** The finger moved [delta] px along the drag's axis (toward the end positive), at ([x], [y]). */
@@ -310,6 +317,16 @@ internal class Scrolling(private val view: ExactView) {
     fun released() {
         if (mode == FLINGING) { halt(); mode = IDLE }
         for (s in scrollers.values) s.own = false
+    }
+
+    /** Invalidate replies and release every touch resource before the activity stops or the reader detaches. */
+    fun stopped() {
+        serial++
+        mode = IDLE; answered = false; chain = emptyList(); active = emptyList(); pointer = -1
+        tracker?.recycle(); tracker = null
+        halt()
+        frames.removeFrameCallback(edger); edging = false
+        for (s in scrollers.values) for (edge in s.edges) edge?.finish()
     }
 
     /** The activity stopped, or a touch took a fling: the fling ends where it is. */

@@ -508,9 +508,28 @@ libraries are named in `app.json` under `host.android.maven` ("Maven libraries" 
 the APK resolves it only at the first module view. Each module creates and updates its real Android `View`.
 `events(view, emit)` binds before its first update; call `emit("change", value)` or `emit("input", value)` with
 string values, `emit("message", payload)` with the guest message, `emit("load", "")`, or `emit("press", "")`.
-Retired bindings and events for an old node allocation are ignored. A module button receives `performClick()`
-for an unscrolled tap that no long press took, at its painted position so a platform popup can anchor to it. Native drags, arbitrary
-pointer forwarding and zero-size service modules are not implemented by this button seam.
+Retired bindings and events for an old node allocation are ignored.
+
+A hosted view receives `dispatchTouchEvent` in its own coordinates (LLP 1133.008 D8). Returning false for
+`ACTION_DOWN` declines the sequence; no module opt-in is needed. A tap reaches the view's normal click handling.
+Exact's gestures retain their claimed axes, and a surrounding scroller may cancel the view's sequence when a drag
+passes touch slop along its axis. Thus a vertical drag on a map inside a vertical scroller scrolls the page; a
+horizontal drag can pan the map. Once an accepted hosted contact has a second pointer, a scroller that has not
+claimed it leaves the gesture to the view. An established scroll keeps its drag. A field keeps a selection drag
+if it disallowed interception before the crossing move; otherwise scrolling gets that move first.
+The reader holds events until the hit reply arrives and replays them in order, including subsequent taps. If more
+than 240 events await a reply, it releases a field's held down to Exact and replays there, ignoring the late reply. Retirement or
+activity stop cancels the view's contact. The agent's synthetic `tap … drag` still drives Exact; use real Android
+touches to exercise a hosted view. Zero-size service modules are not part of this seam.
+
+`NativeModule.lifecycle(view, event, state)` receives `ViewLifecycle`'s `CREATE`, `START`, `RESUME`, `PAUSE`,
+`STOP`, `DESTROY`, `SAVE_INSTANCE_STATE` and `LOW_MEMORY` (LLP 1133.021 §9). A view made after resume first hears
+create, start and resume. `CREATE` receives that allocation's saved bundle; `SAVE_INSTANCE_STATE` fills a private
+bundle, retained across reader replacement and activity recreation. A reused view keeps its lifecycle until it is
+destroyed. Package implementations receive the same callbacks through `ExactExtension.viewLifecycle`.
+The maps package forwards them to [Google's MapView](https://developers.google.com/android/reference/com/google/android/gms/maps/MapView).
+It saves the last applied camera props beside the SDK state: restoration keeps the person's camera unless the
+author changed a camera prop, in which case only that prop is applied.
 
 ## Module implementations (LLP 1133.001 D5)
 

@@ -30,6 +30,8 @@ interface NativeModule {
     fun update(view: View, props: JSONObject)
     /** Bound before the first update. Keep this callback only until the next binding; a retired one is ignored. */
     fun events(view: View, emit: (String, String) -> Unit) {}
+    /** Activity callbacks; CREATE receives saved state, SAVE_INSTANCE_STATE fills its private bundle (LLP 1133.021). */
+    fun lifecycle(view: View, event: ViewLifecycle, state: android.os.Bundle? = null) {}
     fun reset(view: View): Boolean = false
     fun destroy(view: View) {}
 }
@@ -243,6 +245,7 @@ class Natives(
         }
     }
 
+    internal val lifecycle = HostedLifecycle()
     private val elements = HashMap<Int, Element>()
     private val byView = HashMap<View, Element>()
     private val pool = HashMap<String, ArrayList<View>>()
@@ -655,16 +658,16 @@ class Natives(
                 }
             }
         }
+        modules[e.module]?.let { lifecycle.made(e.view, "${e.module}:${e.id}:${e.slot}:${e.generation}", it) }
     }
 
-    /** A module button under an unscrolled tap. Other native input stays with its dedicated host. */
-    fun click(id: Int, slot: Int, generation: Int, x: Float, y: Float): Boolean {
-        val e = elements[id]?.takeIf { it.kind == 2 && !it.parked && it.slot == slot && it.generation == generation } ?: return false
-        if (e.disabled || !e.view.isEnabled || !e.view.isClickable) return false
-        e.view.translationX = x
-        e.view.translationY = y
-        return e.view.performClick()
+    /** The allocation hit by the engine, still mounted and enabled when its reply arrives. */
+    fun taker(id: Int, slot: Int, generation: Int): View? {
+        val e = elements[id]?.takeIf { it.kind == 2 && !it.parked && it.slot == slot && it.generation == generation } ?: return null
+        return e.view.takeIf { !e.disabled && it.isEnabled }
     }
+
+    internal var retiring: ((View) -> Unit)? = null
 
     private fun moduleProps(json: JSONObject): JSONObject =
         json.optString("props").takeIf { it.isNotEmpty() }?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
@@ -783,6 +786,7 @@ class Natives(
 
     /** [e]'s view is kept for the next element of its kind, or goes. */
     private fun retire(e: Element) {
+        if (e.kind == 2) retiring?.invoke(e.view)
         e.eventBinding++
         if (pooled(e.kind)) held--
         val module = e.module?.let { modules[it] }
@@ -799,10 +803,12 @@ class Natives(
             }
             e.playing = false; e.inView = false; e.stale = false; e.video = null
         } else if (e.kind == 2 && module != null && (pool[e.module!!]?.size ?: 0) < modulePool && module.reset(e.view)) {
+            lifecycle.unbind(e.view)
             pool.getOrPut(e.module!!) { ArrayList() }.add(e.view)
         } else if (e.kind == 1 && webPool.size < WEB_POOL && webs) {
             webPool.add((e.view as WebView).apply { onPause() })
         } else {
+            lifecycle.destroyed(e.view)
             module?.destroy(e.view)
             (e.view as? WebView)?.destroy()
             removeView(e.view)
@@ -815,7 +821,7 @@ class Natives(
         webPool.clear()
         for (v in videoPool) { players.remove(v)?.release(); removeView(v) }
         videoPool.clear(); sources.clear(); sizes.clear()
-        for ((name, views) in pool) for (v in views) { modules[name]?.destroy(v); removeView(v) }
+        for ((name, views) in pool) for (v in views) { lifecycle.destroyed(v); modules[name]?.destroy(v); removeView(v) }
         pool.clear()
     }
 }

@@ -14,6 +14,7 @@ android {
             "../../../packages/calendar/android", "../../../packages/calendar/test",
             "../../../packages/camera/android", "../../../packages/camera/test",
             "../../../packages/contacts/android",
+            "../../../packages/maps/android", "../../../packages/maps/test",
             "../../../packages/media-capture/android", "../../../packages/media-capture/test",
         ))
     }
@@ -21,6 +22,7 @@ android {
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    testImplementation("com.google.android.gms:play-services-maps:20.1.0")
     testImplementation(libs.robolectric)
     testImplementation("androidx.camera:camera-camera2:1.6.2")
     testImplementation("androidx.camera:camera-lifecycle:1.6.2")

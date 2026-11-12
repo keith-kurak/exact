@@ -688,8 +688,8 @@ internal class Fields(context: Context) : FrameLayout(context) {
 
     /** exact2's answer for touch [serial]: the hosted field under it, or 0. The field's, the touch goes to the field
      * from its down; anything else's (the field is under a bar, a sheet), it goes to exact2 as any touch does. */
-    fun under(serial: Int, field: Int) {
-        if (serial != this.serial || state != HOLDING) return
+    fun under(serial: Int, field: Int): Boolean {
+        if (serial != this.serial || state != HOLDING) return false
         val f = target
         val events = ArrayList(held)
         held.clear()
@@ -706,6 +706,7 @@ internal class Fields(context: Context) : FrameLayout(context) {
             if (v != null) for (e in events) v.fingers.relay(e)
         }
         for (e in events) e.recycle()
+        return f != null && f.id == field && fields[field] === f
     }
 
     /** A scroll took the touch ([Scrolling]): the field's touch is cancelled, or what was held is let go. Whether
